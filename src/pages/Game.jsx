@@ -3,10 +3,43 @@ import { fetchQuestionsPublic } from "../../lib/fetchQuestionsPublic.js";
 
 const ALPHABET = "ABCDEFGHIJKLMNÑOPQRSTUVWXYZ".split("");
 
-const norm = (s="") =>
+const norm = (s = "") =>
   s.toLowerCase()
-   .normalize("NFD").replace(/\p{Diacritic}/gu, "")
-   .replace(/[^a-z0-9ñ]/g, "");
+    .normalize("NFD").replace(/\p{Diacritic}/gu, "")
+    .replace(/[^a-z0-9ñ]/g, "");
+
+/**
+ * Regla opcional:
+ * - "starts_with": la respuesta debe empezar con la letra
+ * - "contains": la respuesta debe contener la letra
+ * - "none" | undefined: no se aplica regla (igualdad únicamente)
+ */
+function isCorrect({ answer, rule, letter }, userInput) {
+  const u = norm(userInput);
+  const a = norm(answer);
+  if (!u || !a) return false;
+
+  // 1) Igualdad exacta (ignora mayúsculas/acentos/símbolos)
+  if (u !== a) return false;
+
+  // 2) Regla opcional (si no hay regla, no exigimos nada extra)
+  const r = rule || "none";
+  const L = String(letter || "").toLowerCase();
+
+  if (r === "starts_with") return a.startsWith(L);
+  if (r === "contains") return a.includes(L);
+  return true; // "none"
+}
+
+// Intenta inferir regla si no viene en el Sheet (opcional, no estricta)
+function inferRule(letter, answer) {
+  const L = String(letter || "").toLowerCase();
+  const a = norm(answer || "");
+  if (!L || !a) return "none";
+  if (a.startsWith(L)) return "starts_with";
+  if (a.includes(L)) return "contains";
+  return "none";
+}
 
 export default function Game() {
   const [questions, setQuestions] = useState([]);          // array de preguntas
@@ -15,21 +48,36 @@ export default function Game() {
   const [value, setValue] = useState("");                  // input respuesta
   const [secs, setSecs] = useState(150);                   // timer
   const [running, setRunning] = useState(false);           // juego corriendo
+  const [lastResult, setLastResult] = useState(null);      // 'ok' | 'bad' | null
 
-  // Traer preguntas del Sheet
+  // Traer preguntas del Sheet (columnas: letter, clue, answer [+ rule opcional])
   useEffect(() => {
     (async () => {
       const data = await fetchQuestionsPublic();
-      // ordenar según rosco y mapear estados iniciales
-      const map = new Map(data.map(q => [q.letter, q]));
-      const ordered = ALPHABET.filter(L => map.has(L)).map(L => map.get(L));
+
+      const byLetter = new Map(
+        (data || []).map((row) => {
+          const letter = row.letter || row.L || row.l || "";
+          const clue   = row.clue   || row.prompt || row.pista || `Con la ${letter}…`;
+          const answer = row.answer ?? "";
+          const ruleRaw = row.rule; // opcional
+          const rule = (ruleRaw === "starts_with" || ruleRaw === "contains")
+            ? ruleRaw
+            : inferRule(letter, answer);
+          return [letter, { letter, clue, answer, rule }];
+        })
+      );
+
+      const ordered = ALPHABET.filter((L) => byLetter.has(L)).map((L) => byLetter.get(L));
       setQuestions(ordered);
 
       const init = {};
-      ordered.forEach(q => { init[q.letter] = "pending"; });
+      ordered.forEach((q) => { init[q.letter] = "pending"; });
       setStatus(init);
 
       setCurrent(ordered[0]?.letter || "A");
+      setLastResult(null);
+      setValue("");
     })().catch(console.error);
   }, []);
 
@@ -37,13 +85,15 @@ export default function Game() {
   useEffect(() => {
     if (!running) return;
     if (secs <= 0) { setRunning(false); return; }
-    const id = setInterval(() => setSecs(s => s - 1), 1000);
+    const id = setInterval(() => setSecs((s) => s - 1), 1000);
     return () => clearInterval(id);
   }, [running, secs]);
 
   // Acceso por letra O(1)
   const qByLetter = useMemo(() => {
-    const m = {}; questions.forEach(q => { m[q.letter] = q; }); return m;
+    const m = {};
+    questions.forEach((q) => { m[q.letter] = q; });
+    return m;
   }, [questions]);
 
   const goNext = () => {
@@ -68,8 +118,13 @@ export default function Game() {
     const q = qByLetter[current];
     if (!q) return;
 
-    const ok = norm(value) === norm(q.answer);
-    setStatus(s => ({ ...s, [current]: ok ? "ok" : "bad" }));
+    const ok = isCorrect(
+      { answer: q.answer, rule: q.rule, letter: q.letter },
+      value
+    );
+
+    setStatus((s) => ({ ...s, [current]: ok ? "ok" : "bad" }));
+    setLastResult(ok ? "ok" : "bad");
     setValue("");
     goNext();
   };
@@ -77,7 +132,8 @@ export default function Game() {
   const pass = () => {
     const q = qByLetter[current];
     if (!q) return;
-    setStatus(s => ({ ...s, [current]: "pass" }));
+    setStatus((s) => ({ ...s, [current]: "pass" }));
+    setLastResult(null);
     setValue("");
     goNext();
   };
@@ -91,14 +147,15 @@ export default function Game() {
   // Stats
   const stats = useMemo(() => {
     const vals = Object.values(status);
-    const ok = vals.filter(v => v === "ok").length;
-    const bad = vals.filter(v => v === "bad").length;
-    const passCount = vals.filter(v => v === "pass").length;
+    const ok = vals.filter((v) => v === "ok").length;
+    const bad = vals.filter((v) => v === "bad").length;
+    const passCount = vals.filter((v) => v === "pass").length;
     return { ok, bad, pass: passCount, total: questions.length, score: ok * 10 - bad * 5 };
   }, [status, questions.length]);
 
   const start = () => {
     setRunning(true);
+    setLastResult(null);
     if (secs <= 0) setSecs(150);
     if (!qByLetter[current]) {
       const first = questions[0]?.letter;
@@ -154,6 +211,7 @@ export default function Game() {
             <>
               <h2 style={{ margin: "0 0 8px" }}>Letra: {current}</h2>
               <p style={{ opacity: .9, margin: 0 }}>{q.clue}</p>
+              {/* <small style={{ opacity:.7 }}>Regla: {q.rule}</small> */}
             </>
           ) : (
             <p>No hay pregunta para la letra <b>{current}</b>.</p>
@@ -162,9 +220,13 @@ export default function Game() {
 
         <form onSubmit={submit} className="row" style={{ marginTop: 10 }}>
           <input
-            className="input"
+            className={[
+              "input",
+              lastResult === "ok" ? "input--ok" : "",
+              lastResult === "bad" ? "input--bad" : "",
+            ].join(" ").trim()}
             value={value}
-            onChange={e => setValue(e.target.value)}
+            onChange={(e) => setValue(e.target.value)}
             placeholder="Tu respuesta…"
             disabled={!running || !q || secs <= 0}
           />

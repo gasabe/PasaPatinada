@@ -1,0 +1,16 @@
+.mode-selector input[type="radio"] { accent-color: var(--primary-name); }
+.custom-set input, .custom-set select {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--primary-light);
+}
+.custom-set button {
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: var(--primary-accent);
+  color: white;
+  cursor: pointer;
+}

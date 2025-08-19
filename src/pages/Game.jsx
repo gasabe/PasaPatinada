@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { fetchQuestionsPublic } from "../../lib/fetchQuestionsPublic.js";
+import "../../src/styles/Game.css"; // Asegurate de tener este import
 
 const ALPHABET = "ABCDEFGHIJKLMNÑOPQRSTUVWXYZ".split("");
 
@@ -8,30 +9,20 @@ const norm = (s = "") =>
     .normalize("NFD").replace(/\p{Diacritic}/gu, "")
     .replace(/[^a-z0-9ñ]/g, "");
 
-/**
- * Regla opcional:
- * - "starts_with": la respuesta debe empezar con la letra
- * - "contains": la respuesta debe contener la letra
- * - "none" | undefined: no se aplica regla (igualdad únicamente)
- */
+/** Reglas opcionales */
 function isCorrect({ answer, rule, letter }, userInput) {
   const u = norm(userInput);
   const a = norm(answer);
   if (!u || !a) return false;
-
-  // 1) Igualdad exacta (ignora mayúsculas/acentos/símbolos)
   if (u !== a) return false;
 
-  // 2) Regla opcional (si no hay regla, no exigimos nada extra)
   const r = rule || "none";
   const L = String(letter || "").toLowerCase();
-
   if (r === "starts_with") return a.startsWith(L);
   if (r === "contains") return a.includes(L);
-  return true; // "none"
+  return true; // none
 }
 
-// Intenta inferir regla si no viene en el Sheet (opcional, no estricta)
 function inferRule(letter, answer) {
   const L = String(letter || "").toLowerCase();
   const a = norm(answer || "");
@@ -42,32 +33,38 @@ function inferRule(letter, answer) {
 }
 
 export default function Game() {
-  const [questions, setQuestions] = useState([]);          // array de preguntas
-  const [status, setStatus] = useState({});                // { A:'pending'|'ok'|'bad'|'pass' }
-  const [current, setCurrent] = useState("A");             // letra actual
-  const [value, setValue] = useState("");                  // input respuesta
-  const [secs, setSecs] = useState(150);                   // timer
-  const [running, setRunning] = useState(false);           // juego corriendo
-  const [lastResult, setLastResult] = useState(null);      // 'ok' | 'bad' | null
+  const [questions, setQuestions] = useState([]);
+  const [status, setStatus] = useState({});        // { A:'pending'|'ok'|'bad'|'pass' }
+  const [current, setCurrent] = useState("A");
+  const [value, setValue] = useState("");
+  const [secs, setSecs] = useState(150);
+  const [running, setRunning] = useState(false);
+  const [lastResult, setLastResult] = useState(null); // 'ok' | 'bad' | null
 
-  // Traer preguntas del Sheet (columnas: letter, clue, answer [+ rule opcional])
+  // Modal fin de juego
+  const [gameOver, setGameOver] = useState({
+    open: false,
+    outcome: "lose",      // 'win' | 'lose' | 'time'
+    title: "",
+    message: "",
+  });
+
+  // Cargar preguntas
   useEffect(() => {
     (async () => {
       const data = await fetchQuestionsPublic();
-
       const byLetter = new Map(
         (data || []).map((row) => {
           const letter = row.letter || row.L || row.l || "";
           const clue   = row.clue   || row.prompt || row.pista || `Con la ${letter}…`;
           const answer = row.answer ?? "";
-          const ruleRaw = row.rule; // opcional
+          const ruleRaw = row.rule;
           const rule = (ruleRaw === "starts_with" || ruleRaw === "contains")
             ? ruleRaw
             : inferRule(letter, answer);
           return [letter, { letter, clue, answer, rule }];
         })
       );
-
       const ordered = ALPHABET.filter((L) => byLetter.has(L)).map((L) => byLetter.get(L));
       setQuestions(ordered);
 
@@ -78,23 +75,72 @@ export default function Game() {
       setCurrent(ordered[0]?.letter || "A");
       setLastResult(null);
       setValue("");
+      setRunning(false);
+      setSecs(150);
+      setGameOver((g) => ({ ...g, open: false }));
     })().catch(console.error);
   }, []);
 
   // Timer
   useEffect(() => {
     if (!running) return;
-    if (secs <= 0) { setRunning(false); return; }
+    if (secs <= 0) {
+      setRunning(false);
+      openEndModal("time");
+      return;
+    }
     const id = setInterval(() => setSecs((s) => s - 1), 1000);
     return () => clearInterval(id);
   }, [running, secs]);
 
-  // Acceso por letra O(1)
+  // Acceso O(1)
   const qByLetter = useMemo(() => {
     const m = {};
     questions.forEach((q) => { m[q.letter] = q; });
     return m;
   }, [questions]);
+
+  // Stats
+  const stats = useMemo(() => {
+    const vals = Object.values(status);
+    const ok = vals.filter((v) => v === "ok").length;
+    const bad = vals.filter((v) => v === "bad").length;
+    const passCount = vals.filter((v) => v === "pass").length;
+    const total = questions.length;
+    return { ok, bad, pass: passCount, total, score: ok * 10 - bad * 5 };
+  }, [status, questions.length]);
+
+  const remaining = useMemo(() => {
+    // pendientes o pasapalabras
+    return Object.entries(status)
+      .filter(([L, st]) => st === "pending" || st === "pass")
+      .map(([L]) => L);
+  }, [status]);
+
+  const openEndModal = (reason) => {
+    // Win si todas las que existen están en ok
+    const allAnswered = questions.length > 0 &&
+      questions.every((q) => status[q.letter] === "ok");
+    let outcome = "lose";
+    let title = "Fin del juego";
+    let message = "";
+
+    if (reason === "time") {
+      outcome = allAnswered ? "win" : "time";
+      title = outcome === "win" ? "¡Ganaste!" : "¡Se acabó el tiempo!";
+      message = outcome === "win"
+        ? "Completaste todo el rosco a tiempo."
+        : "Se terminó el tiempo, probá de nuevo.";
+    } else {
+      outcome = allAnswered ? "win" : "lose";
+      title = outcome === "win" ? "¡Ganaste!" : "Rosco terminado";
+      message = outcome === "win"
+        ? "¡Excelente! Todas correctas."
+        : "Terminaste el rosco. Podés reintentar para mejorar el puntaje.";
+    }
+
+    setGameOver({ open: true, outcome, title, message });
+  };
 
   const goNext = () => {
     if (!questions.length) return;
@@ -102,15 +148,16 @@ export default function Game() {
     for (let i = 1; i <= ALPHABET.length; i++) {
       const idx = (startIdx + i) % ALPHABET.length;
       const L = ALPHABET[idx];
-      if (!qByLetter[L]) continue; // si no hay pregunta para esa letra
+      if (!qByLetter[L]) continue;
       const st = status[L];
       if (st === "pending" || st === "pass") {
         setCurrent(L);
         return;
       }
     }
-    // sin pendientes: termina
+    // no queda ninguna pendiente/pasada
     setRunning(false);
+    openEndModal("done");
   };
 
   const submit = (e) => {
@@ -139,19 +186,10 @@ export default function Game() {
   };
 
   const clickLetter = (L) => {
-    if (!qByLetter[L]) return;               // no existe pregunta
+    if (!qByLetter[L]) return;
     const st = status[L];
     if (st === "pending" || st === "pass") setCurrent(L);
   };
-
-  // Stats
-  const stats = useMemo(() => {
-    const vals = Object.values(status);
-    const ok = vals.filter((v) => v === "ok").length;
-    const bad = vals.filter((v) => v === "bad").length;
-    const passCount = vals.filter((v) => v === "pass").length;
-    return { ok, bad, pass: passCount, total: questions.length, score: ok * 10 - bad * 5 };
-  }, [status, questions.length]);
 
   const start = () => {
     setRunning(true);
@@ -161,6 +199,19 @@ export default function Game() {
       const first = questions[0]?.letter;
       if (first) setCurrent(first);
     }
+  };
+
+  const resetGame = () => {
+    // Resetea estados pero conserva las mismas preguntas cargadas
+    const init = {};
+    questions.forEach((q) => { init[q.letter] = "pending"; });
+    setStatus(init);
+    setCurrent(questions[0]?.letter || "A");
+    setValue("");
+    setSecs(150);
+    setRunning(false);
+    setLastResult(null);
+    setGameOver((g) => ({ ...g, open: false }));
   };
 
   const q = qByLetter[current];
@@ -174,7 +225,7 @@ export default function Game() {
         <div>⏱️ {Math.floor(secs / 60)}:{String(secs % 60).padStart(2, "0")}</div>
       </div>
 
-      {/* Teclado con estados */}
+      {/* Rosco */}
       <div className="letters-wrap">
         <div className="letters-inner">
           {ALPHABET.map((L) => {
@@ -195,6 +246,7 @@ export default function Game() {
                   st === "pass" ? "key--pass" : "",
                 ].join(" ").trim()}
                 onClick={() => clickLetter(L)}
+                title={st}
               >
                 {L}
               </button>
@@ -204,7 +256,7 @@ export default function Game() {
         <div className="baseline" />
       </div>
 
-      {/* Panel de pregunta/entrada */}
+      {/* Panel pregunta */}
       <div className="card" style={{ marginTop: 16 }}>
         <div style={{ minHeight: 90 }}>
           {q ? (
@@ -240,6 +292,42 @@ export default function Game() {
           </button>
         </div>
       </div>
+
+      {/* MODAL FIN DE JUEGO */}
+      {gameOver.open && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <div className="modal">
+            <h3 className={`modal-title ${gameOver.outcome === "win" ? "win" : gameOver.outcome === "time" ? "time" : "lose"}`}>
+              {gameOver.title}
+            </h3>
+
+            <p className="modal-message">{gameOver.message}</p>
+
+            <div className="modal-stats">
+              <div><strong>✅ Correctas:</strong> {stats.ok}</div>
+              <div><strong>❌ Incorrectas:</strong> {stats.bad}</div>
+              <div><strong>⏭️ Pasapalabras:</strong> {stats.pass}</div>
+              <div><strong>🧮 Puntaje:</strong> {stats.score}</div>
+            </div>
+
+            {remaining.length > 0 && (
+              <details className="modal-remaining">
+                <summary>Ver letras pendientes</summary>
+                <div className="remaining-list">
+                  {remaining.map((L) => <span key={L} className="pill">{L}</span>)}
+                </div>
+              </details>
+            )}
+
+            <div className="modal-actions">
+              <button className="btn btn-primary" onClick={resetGame}>Reintentar</button>
+              <button className="btn btn-ghost" onClick={() => setGameOver((g) => ({ ...g, open: false }))}>
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

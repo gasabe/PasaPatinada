@@ -1,101 +1,123 @@
-import { useEffect, useMemo, useState } from "react";
+import { useRef, useState } from "react";
 import { useGameSettings } from "../../lib/useGameSettings";
-import { ALPHABET } from "../../lib/constants";
 import { saveCustomWords } from "../../lib/sheets";
 
-export default function CustomRoscoBuilder({ open, onClose }) {
-  const { customWords, setCustomWords, playerName } = useGameSettings();
-  const [rows, setRows] = useState([]);
+const ALPHABET = "ABCDEFGHIJKLMNÑOPQRSTUVWXYZ".split("");
+const makeDefaultRows = () =>
+  ALPHABET.map(L => ({ letter: L, answer: "", clue: "", rule: "starts_with" }));
+
+export default function CustomRoscoBuilder({ open, rows, setRows, onClose, onDone }) {
+  const { playerName, setMode } = useGameSettings();
+
+  // ⚙️ SIEMPRE declaramos hooks, aunque open sea false
+  const [fallbackRows, setFallbackRows] = useState(makeDefaultRows);
+  const list   = Array.isArray(rows) ? rows : fallbackRows;               // lista segura
+  const setList = typeof setRows === "function" ? setRows : setFallbackRows;
+
   const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+  const [invalids, setInvalids] = useState(new Set());
+  const rowRefs = useRef(ALPHABET.map(() => null));
 
-  useEffect(() => {
-    const map = new Map((customWords || []).map(r => [r.letter, r]));
-    const initial = ALPHABET.map(letter => ({
-      letter,
-      answer: map.get(letter)?.answer || "",
-      clue: map.get(letter)?.clue || "",
+  // ❌ no useMemo: no es necesario y evita cambiar conteo de hooks
+  const completed = list.filter(r => r?.answer?.trim() && r?.clue?.trim()).length;
+
+  const updateRow = (idx, patch) => {
+    setList(prev => {
+      const base = Array.isArray(prev) && prev.length ? prev : makeDefaultRows();
+      const next = [...base];
+      next[idx] = { ...base[idx], ...patch, letter: ALPHABET[idx], rule: "starts_with" };
+      return next;
+    });
+  };
+
+  const handleListo = async () => {
+    setErr("");
+    // validar vacíos
+    const bad = [];
+    list.forEach((r, i) => {
+      if (!r?.answer?.trim() || !r?.clue?.trim()) bad.push(i);
+    });
+    if (bad.length) {
+      setInvalids(new Set(bad));
+      setErr(`Completá todas las respuestas y pistas. Faltan ${bad.length} letras.`);
+      rowRefs.current[bad[0]]?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    setInvalids(new Set());
+
+    const words = list.map(r => ({
+      letter: r.letter,
+      answer: r.answer.trim(),
+      clue: r.clue.trim(),
+      rule: "starts_with",
     }));
-    setRows(initial);
-  }, [customWords]);
-
-  const filled = useMemo(
-    () => rows.filter(r => r.answer.trim() && r.clue.trim()).length,
-    [rows]
-  );
-
-  if (!open) return null;
-
-  const update = (idx, key, value) => {
-    setRows(prev => prev.map((r, i) => (i === idx ? { ...r, [key]: value } : r)));
-  };
-
-  const handleSaveLocal = () => {
-    const validRows = rows.filter(r => r.answer.trim() && r.clue.trim());
-    if (validRows.length === 0) {
-      setMsg("⚠️ Completá al menos una palabra y pista.");
-      return;
-    }
-    setCustomWords(validRows);
-    setMsg("Guardado local ✔ (listo para jugar en modo personalizado)");
-  };
-
-  const handleSaveSheet = async () => {
-    const validRows = rows.filter(r => r.answer.trim() && r.clue.trim());
-    if (validRows.length === 0) {
-      setMsg("⚠️ Completá al menos una palabra y pista.");
-      return;
-    }
 
     try {
       setSaving(true);
-      await saveCustomWords({
-        author: playerName || "anon",
-        words: validRows,
-      });
-      setCustomWords(validRows); // ✅ También se guarda local
-      setMsg("Guardado en Sheet y listo para jugar ✔");
+      localStorage.setItem("rosco_custom", JSON.stringify(words));
+      await saveCustomWords({ author: playerName || "Anónimo", words });
+      setMode("custom");
+      onDone?.(words);
+      onClose?.();
     } catch (e) {
-      setMsg("❌ Error guardando en Sheet: " + e.message);
+      console.error(e);
+      setErr("No se pudo guardar. Probá de nuevo.");
     } finally {
       setSaving(false);
     }
   };
 
-  return (
-    <div className="modal-backdrop">
-      <div className="modal-content large" role="dialog" aria-modal="true">
-        <h2>Rosco Personalizado</h2>
-        <p>Completá palabras y pista por letra. Completadas: {filled}/{ALPHABET.length}</p>
+  // ✅ Render condicional DESPUÉS de los hooks, así no cambia el orden
+  if (!open) return null;
 
-        <div className="grid-rosco">
-          {rows.map((r, idx) => (
-            <div key={r.letter} className="row-rosco">
-              <div className="cell-letter">{r.letter}</div>
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <h2>Rosco Personalizado</h2>
+        <p>Completá palabras y pista por letra. Completadas: {completed}/27</p>
+
+        <div className="rosco-list">
+          {ALPHABET.map((L, i) => (
+            <div key={L} ref={el => (rowRefs.current[i] = el)} className="rosco-row">
+              <span className="badge">{L}</span>
+
               <input
-                className="cell-answer"
+                className={`input ${invalids.has(i) && !list[i]?.answer?.trim() ? "error" : ""}`}
                 placeholder="respuesta"
-                value={r.answer}
-                onChange={(e) => update(idx, "answer", e.target.value)}
+                value={list[i]?.answer || ""}
+                onChange={(e) => updateRow(i, { answer: e.target.value })}
               />
+
               <input
-                className="cell-clue"
+                className={`input ${invalids.has(i) && !list[i]?.clue?.trim() ? "error" : ""}`}
                 placeholder="pista / definición"
-                value={r.clue}
-                onChange={(e) => update(idx, "clue", e.target.value)}
+                value={list[i]?.clue || ""}
+                onChange={(e) => updateRow(i, { clue: e.target.value })}
               />
             </div>
           ))}
         </div>
 
-        {msg && <p className="hint">{msg}</p>}
+        {err && <div className="error-box">{err}</div>}
 
         <div className="actions">
-          <button className="btn" onClick={handleSaveLocal}>Guardar local</button>
-          <button className="btn" disabled={saving} onClick={handleSaveSheet}>
-            {saving ? "Guardando..." : "Guardar en Sheet"}
+          <button className="btn" type="button" onClick={onClose}>Cancelar</button>
+          <button
+            className="btn"
+            type="button"
+            onClick={() => localStorage.setItem("rosco_custom", JSON.stringify(list))}
+          >
+            Guardar local
           </button>
-          <button className="btn primary" onClick={onClose}>Listo</button>
+          <button
+            className="btn primary"
+            type="button"
+            onClick={handleListo}
+            disabled={saving}
+          >
+            {saving ? "Guardando…" : "Listo"}
+          </button>
         </div>
       </div>
     </div>

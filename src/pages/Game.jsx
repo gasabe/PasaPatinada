@@ -1,3 +1,4 @@
+// Game.jsx
 import { useEffect, useMemo, useState, useRef } from "react";
 import { fetchQuestionsPublic } from "../../lib/fetchQuestionsPublic.js";
 import { useGameSettings } from "../../lib/useGameSettings.js"; 
@@ -9,9 +10,7 @@ import "../styles/Game.css";
 const ALPHABET = "ABCDEFGHIJKLMNÑOPQRSTUVWXYZ".split("");
 
 const norm = (s = "") =>
-  s.toLowerCase()
-    .normalize("NFD").replace(/\p{Diacritic}/gu, "")
-    .replace(/[^a-z0-9ñ]/g, "");
+  s.toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "").replace(/[^a-z0-9ñ]/g, "");
 
 function isCorrect({ answer, rule, letter }, userInput) {
   const u = norm(userInput);
@@ -50,7 +49,7 @@ export default function Game() {
   const [showBuilder, setShowBuilder] = useState(false);
   const startedAt = useRef(null);
 
-  // Timer
+  // ⏱️ Timer
   useEffect(() => {
     if (!running) return;
     if (secs <= 0) {
@@ -58,10 +57,11 @@ export default function Game() {
       openEndModal("time");
       return;
     }
-    const id = setInterval(() => setSecs((s) => s - 1), 1000);
+    const id = setInterval(() => setSecs((s) => s - 1), 100);
     return () => clearInterval(id);
   }, [running, secs]);
 
+  // 🧠 Setup
   const loadQuestions = async () => {
     if (mode === "custom") {
       const list = (customWords || []).map(w => ({
@@ -132,8 +132,13 @@ export default function Game() {
       .map(([L]) => L);
   }, [status]);
 
+  // 🎯 NUEVO: Modal automático con mensaje según porcentaje
   const openEndModal = async (reason) => {
-    const allAnswered = questions.length > 0 && questions.every((q) => status[q.letter] === "ok");
+    const allAnswered = questions.length > 0 &&
+      questions.every((q) => status[q.letter] !== "pending" && status[q.letter] !== "pass");
+
+    const moreThanHalf = stats.ok / stats.total >= 0.5;
+
     let outcome = "lose";
     let title = "Fin del juego";
     let message = "";
@@ -145,22 +150,22 @@ export default function Game() {
         ? "Completaste todo el rosco a tiempo."
         : "Se terminó el tiempo, probá de nuevo.";
     } else {
-      outcome = allAnswered ? "win" : "lose";
-      title = outcome === "win" ? "¡Ganaste!" : "Rosco terminado";
-      message = outcome === "win"
-        ? "¡Excelente! Todas correctas."
+      outcome = moreThanHalf ? "win" : "lose";
+      title = moreThanHalf ? "¡Buen trabajo!" : "Rosco terminado";
+      message = moreThanHalf
+        ? `¡Felicitaciones! Superaste el 50% con ${stats.ok} respuestas correctas.`
         : "Terminaste el rosco. Podés reintentar para mejorar el puntaje.";
     }
 
     const durationMs = Date.now() - (startedAt.current || Date.now());
     try {
+      setGameOver({ open: true, outcome, title, message });
       await saveScore({ player: playerName || "anon", score: stats.ok, mode });
       await savePlayerStat({ player: playerName || "anon", correct: stats.ok, wrong: stats.bad, passed: stats.pass, mode, durationMs });
     } catch (e) {
       console.error("Error guardando en Sheet", e);
     }
 
-    setGameOver({ open: true, outcome, title, message });
   };
 
   const goNext = () => {
@@ -177,7 +182,7 @@ export default function Game() {
       }
     }
     setRunning(false);
-    openEndModal("done");
+    void  openEndModal("done");
   };
 
   const submit = (e) => {
@@ -258,7 +263,7 @@ export default function Game() {
             <div className="baseline" />
           </div>
 
-          {/* Panel pregunta */}
+          {/* Pregunta actual */}
           <div className="card" style={{ marginTop: 16 }}>
             <div style={{ minHeight: 90 }}>
               {q ? (
@@ -288,7 +293,7 @@ export default function Game() {
             </div>
           </div>
 
-          {/* MODAL FIN DE JUEGO */}
+          {/* Modal Fin */}
           {gameOver.open && (
             <div className="modal-backdrop" role="dialog" aria-modal="true">
               <div className="modal">

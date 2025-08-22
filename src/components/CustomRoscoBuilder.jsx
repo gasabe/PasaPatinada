@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useGameSettings } from "../../lib/useGameSettings"; 
+import { useGameSettings } from "../../lib/useGameSettings";
 import { ALPHABET } from "../../lib/constants";
 import { saveCustomWords } from "../../lib/sheets";
 
@@ -19,7 +19,10 @@ export default function CustomRoscoBuilder({ open, onClose }) {
     setRows(initial);
   }, [customWords]);
 
-  const filled = useMemo(() => rows.filter(r => r.answer.trim()).length, [rows]);
+  const filled = useMemo(
+    () => rows.filter(r => r.answer.trim() && r.clue.trim()).length,
+    [rows]
+  );
 
   if (!open) return null;
 
@@ -28,20 +31,32 @@ export default function CustomRoscoBuilder({ open, onClose }) {
   };
 
   const handleSaveLocal = () => {
-    setCustomWords(rows.filter(r => r.answer.trim()));
+    const validRows = rows.filter(r => r.answer.trim() && r.clue.trim());
+    if (validRows.length === 0) {
+      setMsg("⚠️ Completá al menos una palabra y pista.");
+      return;
+    }
+    setCustomWords(validRows);
     setMsg("Guardado local ✔ (listo para jugar en modo personalizado)");
   };
 
   const handleSaveSheet = async () => {
+    const validRows = rows.filter(r => r.answer.trim() && r.clue.trim());
+    if (validRows.length === 0) {
+      setMsg("⚠️ Completá al menos una palabra y pista.");
+      return;
+    }
+
     try {
       setSaving(true);
       await saveCustomWords({
         author: playerName || "anon",
-        words: rows.filter(r => r.answer.trim()),
+        words: validRows,
       });
-      setMsg("Guardado en Sheet ✔");
+      setCustomWords(validRows); // ✅ También se guarda local
+      setMsg("Guardado en Sheet y listo para jugar ✔");
     } catch (e) {
-      setMsg("Error guardando en Sheet: " + e.message);
+      setMsg("❌ Error guardando en Sheet: " + e.message);
     } finally {
       setSaving(false);
     }

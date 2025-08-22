@@ -14,8 +14,6 @@ export default function App() {
         </Link>
         <nav className="row" style={{ gap: 8 }}>
           <Link className="btn btn-ghost" to="/">Inicio</Link>
-          <Link className="btn btn-primary" to="/game">Jugar</Link>
-          <Link className="btn btn-ghost" to="/letters">Teclado</Link>
         </nav>
       </header>
       <Outlet />

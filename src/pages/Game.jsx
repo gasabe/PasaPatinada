@@ -49,7 +49,6 @@ export default function Game() {
   const [showBuilder, setShowBuilder] = useState(false);
   const startedAt = useRef(null);
 
-  // ⏱️ Timer
   useEffect(() => {
     if (!running) return;
     if (secs <= 0) {
@@ -57,20 +56,21 @@ export default function Game() {
       openEndModal("time");
       return;
     }
-    const id = setInterval(() => setSecs((s) => s - 1), 100);
+    const id = setInterval(() => setSecs((s) => s - 1), 1000);
     return () => clearInterval(id);
   }, [running, secs]);
 
-  // 🧠 Setup
   const loadQuestions = async () => {
     if (mode === "custom") {
-      const list = (customWords || []).map(w => ({
+      const saved = localStorage.getItem("rosco_custom");
+      const list = saved ? JSON.parse(saved) : customWords || [];
+      const processed = list.map(w => ({
         letter: w.letter,
         clue: w.clue,
         answer: w.answer,
         rule: inferRule(w.letter, w.answer),
       }));
-      setupQuestions(list);
+      setupQuestions(processed);
       return;
     }
 
@@ -123,7 +123,7 @@ export default function Game() {
     const bad = vals.filter((v) => v === "bad").length;
     const passCount = vals.filter((v) => v === "pass").length;
     const total = questions.length;
-    return { ok, bad, pass: passCount, total, score: ok * 10 - bad * 5 };
+    return { ok, bad, pass: passCount, total, score: ok * 1 - bad * 0 };
   }, [status, questions.length]);
 
   const remaining = useMemo(() => {
@@ -132,7 +132,6 @@ export default function Game() {
       .map(([L]) => L);
   }, [status]);
 
-  // 🎯 NUEVO: Modal automático con mensaje según porcentaje
   const openEndModal = async (reason) => {
     const allAnswered = questions.length > 0 &&
       questions.every((q) => status[q.letter] !== "pending" && status[q.letter] !== "pass");
@@ -165,7 +164,6 @@ export default function Game() {
     } catch (e) {
       console.error("Error guardando en Sheet", e);
     }
-
   };
 
   const goNext = () => {
@@ -182,7 +180,7 @@ export default function Game() {
       }
     }
     setRunning(false);
-    void  openEndModal("done");
+    void openEndModal("done");
   };
 
   const submit = (e) => {

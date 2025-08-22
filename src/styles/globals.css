@@ -142,6 +142,8 @@ a {
 .key:hover{ transform: translateY(-1px); filter: brightness(1.05); }
 .key:active{ transform: translateY(0); filter: brightness(.98); }
 
+
+
 /* Responsive */
 @media (max-width: 900px){ .letters-inner{ grid-template-columns: repeat(8, 48px); } }
 @media (max-width: 600px){ .letters-inner{ grid-template-columns: repeat(6, 44px); } .key{ width:44px; height:44px; } }

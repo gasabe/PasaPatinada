@@ -1,7 +1,7 @@
-// Game.jsx
-import { useEffect, useMemo, useState, useRef } from "react";
+// src/pages/Game.jsx
+import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchQuestionsPublic } from "../../lib/fetchQuestionsPublic.js";
-import { useGameSettings } from "../../lib/useGameSettings.js"; 
+import { useGameSettings } from "../../lib/useGameSettings.js";
 import { saveScore, savePlayerStat } from "../../lib/sheets";
 import GameStartModal from "../components/GameStartModal";
 import CustomRoscoBuilder from "../components/CustomRoscoBuilder";
@@ -10,7 +10,11 @@ import "../styles/Game.css";
 const ALPHABET = "ABCDEFGHIJKLMNÑOPQRSTUVWXYZ".split("");
 
 const norm = (s = "") =>
-  s.toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "").replace(/[^a-z0-9ñ]/g, "");
+  s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/[^a-z0-9ñ]/g, "");
 
 function isCorrect({ answer, rule, letter }, userInput) {
   const u = norm(userInput);
@@ -44,11 +48,17 @@ export default function Game() {
   const [secs, setSecs] = useState(150);
   const [running, setRunning] = useState(false);
   const [lastResult, setLastResult] = useState(null);
-  const [gameOver, setGameOver] = useState({ open: false, outcome: "lose", title: "", message: "" });
+  const [gameOver, setGameOver] = useState({
+    open: false,
+    outcome: "lose",
+    title: "",
+    message: "",
+  });
   const [showStart, setShowStart] = useState(true);
   const [showBuilder, setShowBuilder] = useState(false);
   const startedAt = useRef(null);
 
+  // Timer
   useEffect(() => {
     if (!running) return;
     if (secs <= 0) {
@@ -60,40 +70,47 @@ export default function Game() {
     return () => clearInterval(id);
   }, [running, secs]);
 
+  // Load questions according to mode
   const loadQuestions = async () => {
     if (mode === "custom") {
-      const saved = localStorage.getItem("rosco_custom");
-      const list = saved ? JSON.parse(saved) : customWords || [];
-      const processed = list.map(w => ({
+      // usa las palabras que cargaste en el modal (contexto)
+      const list = Array.isArray(customWords) ? customWords : [];
+      const processed = list.map((w) => ({
         letter: w.letter,
         clue: w.clue,
         answer: w.answer,
-        rule: inferRule(w.letter, w.answer),
+        rule: w.rule || inferRule(w.letter, w.answer),
       }));
       setupQuestions(processed);
       return;
     }
 
-    const data = await fetchQuestionsPublic();
+    // random
+    const data = await fetchQuestionsPublic({ rule: rule || "starts_with" });
     const byLetter = new Map(
       (data || []).map((row) => {
         const letter = row.letter || row.L || row.l || "";
         const clue = row.clue || row.prompt || row.pista || `Con la ${letter}…`;
         const answer = row.answer ?? "";
         const ruleRaw = row.rule;
-        const ruleFinal = (ruleRaw === "starts_with" || ruleRaw === "contains")
-          ? ruleRaw
-          : inferRule(letter, answer);
+        const ruleFinal =
+          ruleRaw === "starts_with" || ruleRaw === "contains"
+            ? ruleRaw
+            : inferRule(letter, answer);
         return [letter, { letter, clue, answer, rule: ruleFinal }];
       })
     );
-    const ordered = ALPHABET.filter((L) => byLetter.has(L)).map((L) => byLetter.get(L));
+    const ordered = ALPHABET.filter((L) => byLetter.has(L)).map((L) =>
+      byLetter.get(L)
+    );
     setupQuestions(ordered);
   };
 
   const setupQuestions = (list) => {
     const init = {};
-    list.forEach((q) => { init[q.letter] = "pending"; });
+    list.forEach((q) => {
+      init[q.letter] = "pending";
+    });
     setQuestions(list);
     setStatus(init);
     setCurrent(list[0]?.letter || "A");
@@ -111,12 +128,16 @@ export default function Game() {
     setRunning(true);
   };
 
+  // Index by letter for quick access
   const qByLetter = useMemo(() => {
     const m = {};
-    questions.forEach((q) => { m[q.letter] = q; });
+    questions.forEach((q) => {
+      m[q.letter] = q;
+    });
     return m;
   }, [questions]);
 
+  // Stats
   const stats = useMemo(() => {
     const vals = Object.values(status);
     const ok = vals.filter((v) => v === "ok").length;
@@ -126,17 +147,22 @@ export default function Game() {
     return { ok, bad, pass: passCount, total, score: ok * 1 - bad * 0 };
   }, [status, questions.length]);
 
+  // Letters remaining
   const remaining = useMemo(() => {
     return Object.entries(status)
       .filter(([_, st]) => st === "pending" || st === "pass")
       .map(([L]) => L);
   }, [status]);
 
+  // End modal + persistence
   const openEndModal = async (reason) => {
-    const allAnswered = questions.length > 0 &&
-      questions.every((q) => status[q.letter] !== "pending" && status[q.letter] !== "pass");
+    const allAnswered =
+      questions.length > 0 &&
+      questions.every(
+        (q) => status[q.letter] !== "pending" && status[q.letter] !== "pass"
+      );
 
-    const moreThanHalf = stats.ok / stats.total >= 0.5;
+    const moreThanHalf = stats.ok / (stats.total || 1) >= 0.5;
 
     let outcome = "lose";
     let title = "Fin del juego";
@@ -145,9 +171,10 @@ export default function Game() {
     if (reason === "time") {
       outcome = allAnswered ? "win" : "time";
       title = outcome === "win" ? "¡Ganaste!" : "¡Se acabó el tiempo!";
-      message = outcome === "win"
-        ? "Completaste todo el rosco a tiempo."
-        : "Se terminó el tiempo, probá de nuevo.";
+      message =
+        outcome === "win"
+          ? "Completaste todo el rosco a tiempo."
+          : "Se terminó el tiempo, probá de nuevo.";
     } else {
       outcome = moreThanHalf ? "win" : "lose";
       title = moreThanHalf ? "¡Buen trabajo!" : "Rosco terminado";
@@ -159,13 +186,25 @@ export default function Game() {
     const durationMs = Date.now() - (startedAt.current || Date.now());
     try {
       setGameOver({ open: true, outcome, title, message });
-      await saveScore({ player: playerName || "anon", score: stats.ok, mode });
-      await savePlayerStat({ player: playerName || "anon", correct: stats.ok, wrong: stats.bad, passed: stats.pass, mode, durationMs });
+      await saveScore({
+        player: playerName || "anon",
+        score: stats.ok,
+        mode,
+      });
+      await savePlayerStat({
+        player: playerName || "anon",
+        correct: stats.ok,
+        wrong: stats.bad,
+        passed: stats.pass,
+        mode,
+        durationMs,
+      });
     } catch (e) {
       console.error("Error guardando en Sheet", e);
     }
   };
 
+  // Next pending/pass letter
   const goNext = () => {
     if (!questions.length) return;
     const startIdx = ALPHABET.indexOf(current);
@@ -183,6 +222,7 @@ export default function Game() {
     void openEndModal("done");
   };
 
+  // Submit answer
   const submit = (e) => {
     e?.preventDefault?.();
     const q = qByLetter[current];
@@ -195,6 +235,7 @@ export default function Game() {
     goNext();
   };
 
+  // Pass
   const pass = () => {
     const q = qByLetter[current];
     if (!q) return;
@@ -204,15 +245,19 @@ export default function Game() {
     goNext();
   };
 
+  // Click on letter
   const clickLetter = (L) => {
     if (!qByLetter[L]) return;
     const st = status[L];
     if (st === "pending" || st === "pass") setCurrent(L);
   };
 
+  // Reset (keeps same questions)
   const resetGame = () => {
     const init = {};
-    questions.forEach((q) => { init[q.letter] = "pending"; });
+    questions.forEach((q) => {
+      init[q.letter] = "pending";
+    });
     setStatus(init);
     setCurrent(questions[0]?.letter || "A");
     setValue("");
@@ -226,30 +271,60 @@ export default function Game() {
 
   return (
     <div className="game-wrap">
-      <GameStartModal open={showStart} onStart={startGame} onOpenCustomBuilder={() => setShowBuilder(true)} />
-      <CustomRoscoBuilder open={showBuilder} onClose={() => setShowBuilder(false)} />
+      <GameStartModal
+        open={showStart}
+        onStart={startGame}
+        onOpenCustomBuilder={() => setShowBuilder(true)}
+      />
+      <CustomRoscoBuilder
+        open={showBuilder}
+        onClose={() => setShowBuilder(false)}
+      />
 
       {!showStart && (
         <>
           {/* HUD */}
-          <div className="row" style={{ justifyContent: "space-between", marginBottom: 12 }}>
-            <div>✅ {stats.ok} &nbsp;|&nbsp; ❌ {stats.bad} &nbsp;|&nbsp; ⏭️ {stats.pass}</div>
-            <div>🧮 Puntaje: <b>{stats.score}</b></div>
-            <div>⏱️ {Math.floor(secs / 60)}:{String(secs % 60).padStart(2, "0")}</div>
+          <div
+            className="row"
+            style={{ justifyContent: "space-between", marginBottom: 12 }}
+          >
+            <div>
+              ✅ {stats.ok} &nbsp;|&nbsp; ❌ {stats.bad} &nbsp;|&nbsp; ⏭️{" "}
+              {stats.pass}
+            </div>
+            <div>
+              🧮 Puntaje: <b>{stats.score}</b>
+            </div>
+            <div>
+              ⏱️ {Math.floor(secs / 60)}:{String(secs % 60).padStart(2, "0")}
+            </div>
           </div>
 
           {/* Rosco */}
           <div className="letters-wrap">
             <div className="letters-inner">
               {ALPHABET.map((L) => {
-                if (!qByLetter[L]) return <button key={L} className="key key--disabled">{L}</button>;
+                if (!qByLetter[L])
+                  return (
+                    <button key={L} className="key key--disabled" type="button">
+                      {L}
+                    </button>
+                  );
                 const st = status[L] || "pending";
                 const isActive = L === current && running;
                 return (
                   <button
                     key={L}
                     type="button"
-                    className={["key", isActive ? "key--active" : "", st === "ok" ? "key--ok" : "", st === "bad" ? "key--bad" : "", st === "pass" ? "key--pass" : ""].join(" ").trim()}
+                    className={[
+                      "key",
+                      isActive ? "key--active" : "",
+                      st === "ok" ? "key--ok" : "",
+                      st === "bad" ? "key--bad" : "",
+                      st === "pass" ? "key--pass" : "",
+                    ]
+                      .join(" ")
+                      .trim()}
                     onClick={() => clickLetter(L)}
                     title={st}
                   >
@@ -267,27 +342,53 @@ export default function Game() {
               {q ? (
                 <>
                   <h2 style={{ margin: "0 0 8px" }}>Letra: {current}</h2>
-                  <p style={{ opacity: .9, margin: 0 }}>{q.clue}</p>
+                  <p style={{ opacity: 0.9, margin: 0 }}>{q.clue}</p>
                 </>
               ) : (
-                <p>No hay pregunta para la letra <b>{current}</b>.</p>
+                <p>
+                  No hay pregunta para la letra <b>{current}</b>.
+                </p>
               )}
             </div>
 
             <form onSubmit={submit} className="row" style={{ marginTop: 10 }}>
               <input
-                className={["input", lastResult === "ok" ? "input--ok" : "", lastResult === "bad" ? "input--bad" : ""].join(" ").trim()}
+                className={[
+                  "input",
+                  lastResult === "ok" ? "input--ok" : "",
+                  lastResult === "bad" ? "input--bad" : "",
+                ]
+                  .join(" ")
+                  .trim()}
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
                 placeholder="Tu respuesta…"
                 disabled={!running || !q || secs <= 0}
               />
-              <button className="btn btn-primary" disabled={!running || secs <= 0}>Responder</button>
-              <button type="button" className="btn btn-ghost" onClick={pass} disabled={!running || secs <= 0}>Pasapalabra</button>
+              <button
+                className="btn btn-primary"
+                disabled={!running || secs <= 0}
+              >
+                Responder
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={pass}
+                disabled={!running || secs <= 0}
+              >
+                Pasapalabra
+              </button>
             </form>
 
             <div className="row" style={{ marginTop: 12 }}>
-              <button className="btn btn-ghost" onClick={startGame} disabled={running}>Reiniciar</button>
+              <button
+                className="btn btn-ghost"
+                onClick={startGame}
+                disabled={running}
+              >
+                Reiniciar
+              </button>
             </div>
           </div>
 
@@ -295,25 +396,46 @@ export default function Game() {
           {gameOver.open && (
             <div className="modal-backdrop" role="dialog" aria-modal="true">
               <div className="modal">
-                <h3 className={`modal-title ${gameOver.outcome}`}>{gameOver.title}</h3>
+                <h3 className={`modal-title ${gameOver.outcome}`}>
+                  {gameOver.title}
+                </h3>
                 <p className="modal-message">{gameOver.message}</p>
                 <div className="modal-stats">
-                  <div><strong>✅ Correctas:</strong> {stats.ok}</div>
-                  <div><strong>❌ Incorrectas:</strong> {stats.bad}</div>
-                  <div><strong>⏭️ Pasapalabras:</strong> {stats.pass}</div>
-                  <div><strong>🧮 Puntaje:</strong> {stats.score}</div>
+                  <div>
+                    <strong>✅ Correctas:</strong> {stats.ok}
+                  </div>
+                  <div>
+                    <strong>❌ Incorrectas:</strong> {stats.bad}
+                  </div>
+                  <div>
+                    <strong>⏭️ Pasapalabras:</strong> {stats.pass}
+                  </div>
+                  <div>
+                    <strong>🧮 Puntaje:</strong> {stats.score}
+                  </div>
                 </div>
                 {remaining.length > 0 && (
                   <details className="modal-remaining">
                     <summary>Ver letras pendientes</summary>
                     <div className="remaining-list">
-                      {remaining.map((L) => <span key={L} className="pill">{L}</span>)}
+                      {remaining.map((L) => (
+                        <span key={L} className="pill">
+                          {L}
+                        </span>
+                      ))}
                     </div>
                   </details>
                 )}
                 <div className="modal-actions">
-                  <button className="btn btn-primary" onClick={resetGame}>Reintentar</button>
-                  <button className="btn btn-ghost" onClick={() => setGameOver((g) => ({ ...g, open: false }))}>Cerrar</button>
+                  <button className="btn btn-primary" onClick={resetGame}>
+                    Reintentar
+                  </button>
+                  <button
+                    className="btn btn-ghost"
+                    onClick={() => setGameOver((g) => ({ ...g, open: false }))}
+                  >
+                    Cerrar
+                  </button>
                 </div>
               </div>
             </div>

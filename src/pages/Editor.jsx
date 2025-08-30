@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { listCustomAuthors, getCustomWordsByAuthor, saveCustomWords } from "../../lib/sheets";
+import "../styles/editor.css";
 
 const ALPHABET = "ABCDEFGHIJKLMNÑOPQRSTUVWXYZ".split("");
 
@@ -59,7 +60,7 @@ export default function Editor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Persistir selección del autor (para próximas veces)
+  // Persistir selección del autor
   useEffect(() => {
     if (author) localStorage.setItem("lastEditedAuthor", author);
   }, [author]);
@@ -134,107 +135,89 @@ export default function Editor() {
   };
 
   return (
-    <div className="container" style={{ maxWidth: 960, margin: "0 auto" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-        <h1 style={{ margin: "1rem 0" }}>📝 Editor de Palabras</h1>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button className="btn outline" onClick={handleDone}>Listo</button>
-          <button className="btn primary" onClick={handleSave} disabled={saving || loading || !author}>
-            {saving ? "Guardando..." : "Guardar cambios"}
-          </button>
+    <div className="container editor">
+      {/* Header */}
+      
+        <div className="editor-title">
+          <span style={{ fontSize: 25 }}>📝</span>
+          <h2>Editor de Palabras</h2>
         </div>
-      </div>
 
-      <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 16, flexWrap: "wrap" }}>
-        <label style={{ fontWeight: 600 }}>Autor:</label>
+      
+
+      {/* Controles */}
+      <div className="editor-controls">
+        <label className="editor-label">Autor:</label>
         <select
+          className="editor-select"
           value={author}
           onChange={e => setAuthor(e.target.value)}
           disabled={loading || saving}
-          style={{ padding: 8 }}
         >
           {!authors.length && <option value="">(no hay autores)</option>}
           {authors.map(a => <option key={a} value={a}>{a}</option>)}
         </select>
 
-        <button className="btn ghost" onClick={() => setRows(emptyRows())} disabled={saving || loading}>
+{/*         <button className="btn ghost" onClick={() => setRows(emptyRows())} disabled={saving || loading}>
           Limpiar todo
-        </button>
+        </button> */}
       </div>
 
+      {/* Mensaje */}
       {msg.text && (
-        <div
-          style={{
-            marginBottom: 12,
-            padding: "10px 12px",
-            borderRadius: 8,
-            background: msg.type === "error" ? "rgba(255,0,0,.1)" : "rgba(0,255,0,.08)",
-            border: `1px solid ${msg.type === "error" ? "rgba(255,0,0,.25)" : "rgba(0,128,0,.25)"}`
-          }}
-        >
+        <div className={`editor-msg ${msg.type === "error" ? "error" : "ok"}`}>
           {msg.text}
         </div>
       )}
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "48px 1fr 1fr 160px",
-          gap: 8,
-          alignItems: "center",
-          fontWeight: 600,
-          padding: "8px 6px",
-          borderBottom: "1px solid rgba(255,255,255,.1)"
-        }}
-      >
-        <div>Letra</div>
-        <div>Pista</div>
-        <div>Respuesta</div>
-        <div>Regla</div>
+      {/* Grilla */}
+      <div className="editor-grid">
+        <div className="editor-grid-head">
+          <div>Letra</div>
+          <div>Pista</div>
+          <div>Respuesta</div>
+          <div>Regla</div>
+        </div>
+
+        <div className="editor-rows">
+          {rows.map((r, i) => (
+            <div className="editor-row" key={r.letter}>
+              <div className="editor-letter">{r.letter}</div>
+
+              <input
+                className="editor-input"
+                type="text"
+                placeholder="Pista..."
+                value={r.clue}
+                onChange={e => setField(i, "clue", e.target.value)}
+                disabled={loading || saving}
+              />
+
+              <input
+                className="editor-input"
+                type="text"
+                placeholder="Respuesta..."
+                value={r.answer}
+                onChange={e => setField(i, "answer", e.target.value)}
+                disabled={loading || saving}
+              />
+
+              <select
+                className="editor-select-small"
+                value={r.rule}
+                onChange={e => setField(i, "rule", e.target.value)}
+                disabled={loading || saving}
+              >
+                <option value="starts_with">Empieza con la letra</option>
+                <option value="contains">Contiene la letra</option>
+              </select>
+            </div>
+          ))}
+        </div>
       </div>
 
-      {rows.map((r, i) => (
-        <div
-          key={r.letter}
-          style={{
-            display: "grid",
-            gridTemplateColumns: "48px 1fr 1fr 160px",
-            gap: 8,
-            alignItems: "center",
-            padding: "6px 6px",
-            borderBottom: "1px dashed rgba(255,255,255,.06)"
-          }}
-        >
-          <div style={{ fontWeight: 700 }}>{r.letter}</div>
-          <input
-            type="text"
-            placeholder="Pista..."
-            value={r.clue}
-            onChange={e => setField(i, "clue", e.target.value)}
-            style={{ padding: 8, borderRadius: 8, border: "1px solid rgba(255,255,255,.15)" }}
-            disabled={loading || saving}
-          />
-          <input
-            type="text"
-            placeholder="Respuesta..."
-            value={r.answer}
-            onChange={e => setField(i, "answer", e.target.value)}
-            style={{ padding: 8, borderRadius: 8, border: "1px solid rgba(255,255,255,.15)" }}
-            disabled={loading || saving}
-          />
-          <select
-            value={r.rule}
-            onChange={e => setField(i, "rule", e.target.value)}
-            style={{ padding: 8, borderRadius: 8, border: "1px solid rgba(255,255,255,.15)" }}
-            disabled={loading || saving}
-          >
-            <option value="starts_with">Empieza con la letra</option>
-            <option value="contains">Contiene la letra</option>
-          </select>
-        </div>
-      ))}
-
-      <div style={{ display: "flex", gap: 12, marginTop: 16, justifyContent: "flex-end" }}>
+      {/* Actions footer */}
+      <div className="editor-actions" style={{ justifyContent: "flex-end", marginTop: 14 }}>
         <button className="btn outline" onClick={handleDone}>Listo</button>
         <button className="btn primary" onClick={handleSave} disabled={saving || loading || !author}>
           {saving ? "Guardando..." : "Guardar cambios"}

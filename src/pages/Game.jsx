@@ -73,7 +73,6 @@ export default function Game() {
   // Load questions according to mode
   const loadQuestions = async () => {
     if (mode === "custom") {
-      // usa las palabras que cargaste en el modal (contexto)
       const list = Array.isArray(customWords) ? customWords : [];
       const processed = list.map((w) => ({
         letter: w.letter,
@@ -338,11 +337,21 @@ export default function Game() {
 
           {/* Pregunta actual */}
           <div className="card" style={{ marginTop: 16 }}>
-            <div style={{ minHeight: 90 }}>
+            <div style={{ minHeight: 96 }}>
               {q ? (
                 <>
-                  <h2 style={{ margin: "0 0 8px" }}>Letra: {current}</h2>
-                  <p style={{ opacity: 0.9, margin: 0 }}>{q.clue}</p>
+                  <h2 style={{ margin: "0 0 6px" }}>Letra: {current}</h2>
+
+                  {/* 👇 NUEVO: muestra la regla */}
+                  <div style={{ fontSize: 14, opacity: 0.85, marginBottom: 6 }}>
+                    {q.rule === "starts_with"
+                      ? <>Empieza con <b>{current}</b></>
+                      : q.rule === "contains"
+                      ? <>Contiene <b>{current}</b></>
+                      : <>Regla libre</>}
+                  </div>
+
+                  <p style={{ opacity: 0.95, margin: 0 }}>{q.clue}</p>
                 </>
               ) : (
                 <p>

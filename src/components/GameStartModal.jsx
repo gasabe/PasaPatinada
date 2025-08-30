@@ -158,7 +158,7 @@ export default function GameStartModal({ open, onStart }) {
           </label>
         </fieldset>
 
-        {mode === "random" && (
+{/*         {mode === "random" && (
           <fieldset className="field">
             <legend>Regla para random</legend>
             <label className="radio">
@@ -171,7 +171,7 @@ export default function GameStartModal({ open, onStart }) {
               <span>Empieza con la letra</span>
             </label>
           </fieldset>
-        )}
+        )} */}
 
         {(mode === "custom" || mode === "host") && (
           <div className="field">

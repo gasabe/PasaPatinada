@@ -1,20 +1,27 @@
 // src/pages/Host.jsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useGameSettings } from "../../lib/useGameSettings";
 import { saveScore, savePlayerStat } from "../../lib/sheets";
+import "../styles/host.css";
 
 const ALPHABET = "ABCDEFGHIJKLMNÑOPQRSTUVWXYZ".split("");
 
 export default function Host() {
   const navigate = useNavigate();
   const { playerName, mode, customWords, rule } = useGameSettings();
-  const [idx, setIdx] = useState(0);                        // índice en lettersToPlay
-  const [status, setStatus] = useState({});                 // { 'A': 'pending|correct|incorrect|pass' }
+
+  // juego
+  const [idx, setIdx] = useState(0);            // índice en lettersToPlay
+  const [status, setStatus] = useState({});     // { 'A': 'pending|correct|incorrect|pass' }
   const [showAnswer, setShowAnswer] = useState(false);
   const [finished, setFinished] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [score, setScore] = useState(0);
+
+  // timer
+  const [secs, setSecs] = useState(150);
+  const [running, setRunning] = useState(false);
+  const startedAt = useRef(null);
 
   // Rosco base a partir del set cargado
   const rosco = useMemo(() => {
@@ -31,27 +38,44 @@ export default function Host() {
     });
   }, [customWords, rule]);
 
-  // Solo jugamos letras que tienen palabra
+  // Solo jugamos letras con palabra
   const lettersToPlay = useMemo(
     () => rosco.filter(r => r.hasWord).map(r => r.letter),
     [rosco]
   );
 
-  // Guardia: si no hay set o no es el modo correcto, redirige
+  // Guardia
   useEffect(() => {
-    if (mode !== "host" || !lettersToPlay.length) {
-      navigate("/");
-    }
+    if (mode !== "host" || !lettersToPlay.length) navigate("/");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
-  // Inicializa estado
+  // Inicializa estado (incluye timer)
   useEffect(() => {
     const init = {};
     lettersToPlay.forEach(L => { init[L] = "pending"; });
     setStatus(init);
     setIdx(0);
+    setShowAnswer(false);
+    setFinished(false);
+
+    // timer
+    setSecs(150);
+    setRunning(!!lettersToPlay.length);
+    startedAt.current = Date.now();
   }, [lettersToPlay.join("")]);
+
+  // Countdown
+  useEffect(() => {
+    if (!running || finished) return;
+    if (secs <= 0) {
+      setRunning(false);
+      setFinished(true);
+      return;
+    }
+    const id = setInterval(() => setSecs(s => s - 1), 1000);
+    return () => clearInterval(id);
+  }, [running, secs, finished]);
 
   const currentLetter = lettersToPlay[idx] || null;
   const current = useMemo(
@@ -67,7 +91,7 @@ export default function Host() {
     do {
       next = (next + 1) % lettersToPlay.length;
       loops++;
-      // saltá letras ya resueltas (correct/incorrect); dejá pendientes y pass
+      // saltá letras ya resueltas (correct/incorrect); dejá pending y pass
     } while (
       loops < maxLoops &&
       (status[lettersToPlay[next]] === "correct" || status[lettersToPlay[next]] === "incorrect")
@@ -77,7 +101,7 @@ export default function Host() {
   };
 
   const mark = (kind) => {
-    if (!currentLetter) return;
+    if (!currentLetter || finished || !running) return;
     const nextStatus = { ...status, [currentLetter]: kind }; // 'correct' | 'incorrect' | 'pass'
     setStatus(nextStatus);
     setShowAnswer(false);
@@ -85,11 +109,9 @@ export default function Host() {
     // ¿terminó? (no quedan pending ni pass)
     const remaining = Object.values(nextStatus).some(s => s === "pending" || s === "pass");
     if (!remaining) {
-      const ok = Object.values(nextStatus).filter(s => s === "correct").length;
-      setScore(ok);
       setFinished(true);
+      setRunning(false);
     } else {
-      // si fue pass, recorremos; si fue correcto/incorrecto, también avanzamos
       goNext();
     }
   };
@@ -103,10 +125,13 @@ export default function Host() {
     const stillPending = values.includes("pending");
     const stillPass    = values.includes("pass");
 
-    // si ya no hay pending pero sí hay pass, fijate que estemos parados en una pass
+    // si ya no hay pending pero sí hay pass, ubicarse en la primera pass
     if (!stillPending && stillPass) {
       const passIndex = lettersToPlay.findIndex(L => status[L] === "pass");
-      if (passIndex >= 0) setIdx(passIndex);
+      if (passIndex >= 0) {
+        setIdx(passIndex);
+        setShowAnswer(false);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
@@ -118,10 +143,14 @@ export default function Host() {
   const percent = total ? Math.round((corrects * 100) / total) : 0;
   const congrats = percent >= 50;
 
+  const mm = Math.floor(secs / 60);
+  const ss = String(secs % 60).padStart(2, "0");
+
   const handleFinish = async () => {
     setSaving(true);
     try {
-      // Guardar score básico si ya usás estas funciones
+      const durationMs = Date.now() - (startedAt.current || Date.now());
+      // Guardar score básico
       await saveScore({
         player: playerName || "Jugador",
         score: corrects,
@@ -132,9 +161,10 @@ export default function Host() {
         player: playerName || "Jugador",
         result: percent,
         mode: "host",
+        durationMs,
       });
-    } catch (e) {
-      // ignoramos errores silenciosamente en este flujo
+    } catch (_e) {
+      // ignorar
     } finally {
       setSaving(false);
       navigate("/ranking");
@@ -143,7 +173,7 @@ export default function Host() {
 
   if (!current) {
     return (
-      <div className="container" style={{ color: "#fff", padding: 24 }}>
+      <div className="container host" style={{ padding: 24 }}>
         <h2>No hay palabras para jugar.</h2>
         <button className="btn" onClick={() => navigate("/editor")}>Ir al editor</button>
       </div>
@@ -151,82 +181,76 @@ export default function Host() {
   }
 
   return (
-    <div className="container" style={{ maxWidth: 900, margin: "0 auto", color: "#fff", padding: "1rem" }}>
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-        <h1>🎤 Modo Relator</h1>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <span>Letras: {corrects}/{total} ✅ · {incorrects} ❌</span>
+    <div className="container host">
+      {/* Header */}
+
+        <h1 style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span role="img" aria-label="mic">🎤</span> Modo Relator
+        </h1>
+        <div className="host-pills">
+          <span className="pill ok"><b>{corrects}</b>/<b>{total}</b> ✓</span>
+          <span className="pill err"><b>{incorrects}</b> ✗</span>
+          <span className="pill time" title="Tiempo restante">⏱ {mm}:{ss}</span>
           <button className="btn ghost" onClick={() => navigate("/")}>Salir</button>
         </div>
-      </header>
 
-      <div
-        style={{
-          marginTop: 16,
-          padding: "1rem",
-          borderRadius: 12,
-          border: "1px solid rgba(255,255,255,.1)",
-          background: "rgba(20,25,55,.6)",
-        }}
-      >
-        <div style={{ display: "flex", gap: 16, alignItems: "center", marginBottom: 12 }}>
-          <div
-            style={{
-              width: 60, height: 60, borderRadius: 999, display: "grid", placeItems: "center",
-              background: "rgba(255,255,255,.08)", fontSize: 28, fontWeight: 800
-            }}
-          >
-            {current.letter}
-          </div>
+
+      {/* Tarjeta principal */}
+      <div className="host-card">
+        <div className="row" style={{ gap: 16, alignItems: "center", marginBottom: 12 }}>
+          <div className="letter-circle">{current.letter}</div>
           <div>
-            <div style={{ opacity: .8, fontSize: 14, marginBottom: 4 }}>
+            <div className="clue-meta">
               {current.rule === "starts_with" ? "Empieza con" : "Contiene"} <b>{current.letter}</b>
             </div>
-            <div style={{ fontSize: 20 }}>{current.clue}</div>
+            <div className="clue-text">{current.clue}</div>
           </div>
         </div>
 
-        <div style={{ marginTop: 12 }}>
-          {!showAnswer ? (
-            <button className="btn outline" onClick={() => setShowAnswer(true)}>Mostrar respuesta</button>
-          ) : (
-            <div style={{ fontSize: 18, padding: "8px 0" }}>
-              Respuesta: <b>{current.answer}</b>
+        {/* Respuesta con toggle */}
+        <div className={`host-answer ${showAnswer ? "revealed" : ""}`}>
+          {showAnswer ? (
+            <div className="space-between">
+              <div style={{ fontSize: 18 }}>
+                Respuesta: <b>{current.answer}</b>
+              </div>
+              <button className="btn outline" onClick={() => setShowAnswer(false)}>
+                Ocultar respuesta
+              </button>
             </div>
+          ) : (
+            <button className="btn outline" onClick={() => setShowAnswer(true)}>
+              Mostrar respuesta
+            </button>
           )}
         </div>
 
-        <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
-          <button className="btn success" onClick={() => mark("correct")}>Correcto</button>
-          <button className="btn warning" onClick={() => mark("pass")}>PasaPatinada</button>
-          <button className="btn danger" onClick={() => mark("incorrect")}>Incorrecto</button>
+        {/* Botonera */}
+        <div className="row" style={{ gap: 12, marginTop: 16 }}>
+          <button className="btn success" onClick={() => mark("correct")} disabled={!running || finished}>Correcto</button>
+          <button className="btn warning" onClick={() => mark("pass")}     disabled={!running || finished}>PasaPatinada</button>
+          <button className="btn danger"  onClick={() => mark("incorrect")} disabled={!running || finished}>Incorrecto</button>
         </div>
       </div>
 
-      {/* Tira de estado del rosco */}
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 16 }}>
+      {/* Tira de letras */}
+      <div className="host-strip">
         {lettersToPlay.map(L => {
           const s = status[L] || "pending";
           const isCurrent = L === current.letter;
-          const bg =
-            s === "correct" ? "rgba(34,197,94,.25)" :
-            s === "incorrect" ? "rgba(239,68,68,.25)" :
-            s === "pass" ? "rgba(250,204,21,.25)" :
-            "rgba(255,255,255,.08)";
-          const bdr =
-            s === "correct" ? "rgba(34,197,94,.6)" :
-            s === "incorrect" ? "rgba(239,68,68,.6)" :
-            s === "pass" ? "rgba(250,204,21,.6)" :
-            "rgba(255,255,255,.2)";
+          const classes = [
+            "btn",
+            isCurrent ? "is-current" : "",
+            s === "correct" ? "state-correct" :
+            s === "incorrect" ? "state-incorrect" :
+            s === "pass" ? "state-pass" : ""
+          ].join(" ").trim();
+
           return (
             <button
               key={L}
-              className="btn"
-              style={{
-                width: 36, height: 36, padding: 0, borderRadius: 999,
-                background: bg, borderColor: isCurrent ? "#60a5fa" : bdr
-              }}
-              onClick={() => setIdx(lettersToPlay.indexOf(L))}
+              className={classes}
+              onClick={() => { setIdx(lettersToPlay.indexOf(L)); setShowAnswer(false); }}
               title={s}
             >
               {L}
@@ -235,14 +259,15 @@ export default function Host() {
         })}
       </div>
 
-      {finished && (
+      {/* Modal fin por tiempo o por completar */}
+      {(finished || secs <= 0) && (
         <div className="modal-backdrop">
           <div className="modal-content" style={{ textAlign: "center" }}>
-            <h2>¡Partida terminada!</h2>
+            <h2>{secs <= 0 ? "¡Se acabó el tiempo!" : "¡Partida terminada!"}</h2>
             <p style={{ fontSize: 18, marginTop: 8 }}>
               Resultado: <b>{corrects}</b> de <b>{total}</b> ({percent}%)
             </p>
-            {congrats && <p style={{ color: "#22c55e", marginTop: 6 }}>🎉 ¡Felicitaciones! Superaste el 50%.</p>}
+            {percent >= 50 && <p style={{ color: "#22c55e", marginTop: 6 }}>🎉 ¡Felicitaciones! Superaste el 50%.</p>}
             <div className="actions" style={{ justifyContent: "center" }}>
               <button className="btn primary" disabled={saving} onClick={handleFinish}>
                 {saving ? "Guardando..." : "Ver ranking"}

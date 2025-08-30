@@ -1,8 +1,7 @@
-// src/main.jsx
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
-import { GameSettingsProvider } from "./context/GameSettingsContext"; // ✅
+import { GameSettingsProvider } from "./context/GameSettingsContext";
 import "./styles/globals.css";
 import "./styles/Modal.css";
 
@@ -11,16 +10,20 @@ import Welcome from "./pages/Welcome.jsx";
 import Game from "./pages/Game.jsx";
 import Letters from "./pages/Letters.jsx";
 import Ranking from "./pages/Ranking.jsx";
+import Editor from "./pages/Editor.jsx";
+import Host from "./pages/Host.jsx"; 
 
 const router = createBrowserRouter([
   {
     path: "/",
-    element: <App />,               // App debe renderizar <Outlet/>
+    element: <App />,
     children: [
       { index: true, element: <Welcome /> },
       { path: "game", element: <Game /> },
       { path: "letters", element: <Letters /> },
       { path: "ranking", element: <Ranking /> },
+      { path: "editor", element: <Editor /> },
+      { path: "host", element: <Host /> }, 
     ],
   },
 ]);

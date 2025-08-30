@@ -13,7 +13,8 @@ export default function App() {
         <nav className="row" style={{ gap: 8 }}>
           <Link className="btn btn-ghost" to="/">Inicio</Link>
           <Link className="btn btn-ghost" to="/game">Jugar</Link>
-          <Link className="btn btn-ghost" to="/ranking">Ranking</Link> {/* 🆕 */}
+          <Link className="btn btn-ghost" to="/editor">Editor</Link>
+          <Link className="btn btn-ghost" to="/ranking">Ranking</Link>
         </nav>
       </header>
       <Outlet />

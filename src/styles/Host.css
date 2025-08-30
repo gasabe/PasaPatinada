@@ -1,0 +1,156 @@
+/* ====== Paleta base (oscura) ====== */
+.host {
+  --host-bg: #0b1a22;
+  --host-panel: #0f2230;
+  --host-panel-2: #12283a;
+  --host-border: rgba(255,255,255,.10);
+  --host-border-strong: rgba(255,255,255,.16);
+  --host-fg: #eaf2f6;
+  --host-fg-dim: #c6d3dc;
+
+  --ok: #22c55e;
+  --ok-bg: rgba(34,197,94,.18);
+  --warn: #facc15;
+  --warn-bg: rgba(250,204,21,.20);
+  --err: #ef4444;
+  --err-bg: rgba(239,68,68,.18);
+  --info: #60a5fa;
+  --info-bg: rgba(96,165,250,.18);
+
+  color: var(--host-fg);
+}
+
+/* ====== Layout general ====== */
+.host .host-card {
+  margin-top: 16px;
+  padding: 1rem;
+  border-radius: 14px;
+  border: 1px solid var(--host-border);
+  background: linear-gradient(180deg, var(--host-panel), var(--host-panel-2));
+  box-shadow: 0 10px 30px rgba(0,0,0,.25);
+}
+
+.host h1 {
+  line-height: 1.1;
+  letter-spacing: .2px;
+}
+
+/* ====== Header ====== */
+.host .host-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.host .host-pills {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.host .pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--host-border-strong);
+  background: rgba(255,255,255,.06);
+  font-size: 13px;
+  color: var(--host-fg);
+}
+.host .pill.ok    { border-color: rgba(34,197,94,.55);  background: var(--ok-bg); }
+.host .pill.err   { border-color: rgba(239,68,68,.55);  background: var(--err-bg); }
+.host .pill.time  { border-color: rgba(96,165,250,.55); background: var(--info-bg); }
+
+/* ====== Tarjeta de pista ====== */
+.host .letter-circle {
+  width: 64px; height: 64px; border-radius: 999px;
+  display: grid; place-items: center;
+  background: rgba(255,255,255,.08);
+  font-size: 28px; font-weight: 800;
+  border: 1px solid var(--host-border);
+}
+
+.host .clue-meta {
+  opacity: .85;
+  font-size: 14px;
+  margin-bottom: 6px;
+  color: var(--host-fg-dim);
+}
+
+.host .clue-text {
+  font-size: 20px;
+  line-height: 1.35;
+}
+
+/* ====== Respuesta (toggle) ====== */
+.host .host-answer {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px dashed var(--host-border-strong);
+  background: transparent;
+}
+.host .host-answer.revealed {
+  background: rgba(255,255,255,.06);
+}
+
+/* ====== Botonera principal ====== */
+.btn { border-radius: 10px; font-weight: 600; }
+.host .btn.success { background: var(--ok);   color: #0a1a12; border-color: rgba(34,197,94,.7); }
+.host .btn.warning { background: var(--warn); color: #1f2937; border-color: rgba(250,204,21,.8); }
+.host .btn.danger  { background: var(--err);  color: #fff;    border-color: rgba(239,68,68,.8); }
+.host .btn.ghost   { background: rgba(255,255,255,.06); color: var(--host-fg); border-color: var(--host-border); }
+.host .btn.outline { background: transparent; color: var(--host-fg); border-color: var(--host-border-strong); }
+.host .btn:hover { filter: brightness(1.05); }
+.host .btn:focus-visible {
+  outline: 2px solid var(--info);
+  outline-offset: 2px;
+}
+
+/* ====== Tira de letras ====== */
+.host .host-strip {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(36px, 1fr));
+  gap: 8px;
+  margin-top: 16px;
+}
+
+@media (max-width: 640px) {
+  .host .host-strip { grid-template-columns: repeat(9, minmax(34px, 1fr)); }
+}
+@media (max-width: 420px) {
+  .host .host-strip { grid-template-columns: repeat(7, minmax(32px, 1fr)); }
+}
+
+.host .host-strip .btn {
+  width: 40px; height: 40px; padding: 0;
+  border-radius: 999px;
+  background: rgba(255,255,255,.08);
+  border: 1px solid var(--host-border);
+  font-weight: 700;
+}
+
+.host .host-strip .btn.is-current {
+  border-color: var(--info);
+  box-shadow: 0 0 0 2px var(--info-bg) inset;
+}
+
+.host .host-strip .btn.state-correct {
+  background: var(--ok-bg);
+  border-color: rgba(34,197,94,.6);
+}
+.host .host-strip .btn.state-incorrect {
+  background: var(--err-bg);
+  border-color: rgba(239,68,68,.6);
+}
+.host .host-strip .btn.state-pass {
+  background: var(--warn-bg);
+  border-color: rgba(250,204,21,.6);
+}
+
+/* ====== Utilidades ====== */
+.host .row { display: flex; align-items: center; gap: 12px; }
+.host .space-between { display: flex; justify-content: space-between; align-items: center; }

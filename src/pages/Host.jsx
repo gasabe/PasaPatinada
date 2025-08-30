@@ -3,7 +3,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useGameSettings } from "../../lib/useGameSettings";
 import { saveScore, savePlayerStat } from "../../lib/sheets";
-import "../styles/host.css";
+import "/src/styles/host.css";
+
 
 const ALPHABET = "ABCDEFGHIJKLMNÑOPQRSTUVWXYZ".split("");
 

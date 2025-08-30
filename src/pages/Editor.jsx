@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { listCustomAuthors, getCustomWordsByAuthor, saveCustomWords } from "../../lib/sheets";
-import "../../src/styles/editor.css";
+import "/src/styles/editor.css";
 
 const ALPHABET = "ABCDEFGHIJKLMNÑOPQRSTUVWXYZ".split("");
 

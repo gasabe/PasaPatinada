@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { listCustomAuthors, getCustomWordsByAuthor, saveCustomWords } from "../../lib/sheets";
 
 const ALPHABET = "ABCDEFGHIJKLMNÑOPQRSTUVWXYZ".split("");
@@ -13,29 +14,55 @@ function emptyRows() {
 }
 
 export default function Editor() {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // Autor preferido: state -> query -> localStorage
+  const preloadFromState = (location?.state?.author || "").trim();
+  const preloadFromQuery = (new URLSearchParams(location.search).get("author") || "").trim();
+  const preloadFromLS    = (typeof window !== "undefined" && localStorage.getItem("lastEditedAuthor")) || "";
+  const preload = (preloadFromState || preloadFromQuery || preloadFromLS).trim();
+
   const [authors, setAuthors] = useState([]);
-  const [author, setAuthor]   = useState("");
+  const [author, setAuthor]   = useState(preload);
   const [rows, setRows]       = useState(emptyRows);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving]   = useState(false);
   const [msg, setMsg]         = useState({ type: "", text: "" });
 
-  // Cargar autores al entrar
+  // Cargar autores al entrar y fijar autor inicial válido
   useEffect(() => {
     let mounted = true;
     (async () => {
       setLoading(true);
       const res = await listCustomAuthors();
-      if (mounted) {
-        setLoading(false);
-        if (!res?.ok) return setMsg({ type: "error", text: res?.error || "No se pudieron listar autores." });
-        setAuthors(res.authors || []);
-        // Selección por defecto si existe
-        if ((res.authors || []).length && !author) setAuthor(res.authors[0]);
+      setLoading(false);
+      if (!mounted) return;
+      if (!res?.ok) {
+        setAuthors([]);
+        return setMsg({ type: "error", text: res?.error || "No se pudieron listar autores." });
+      }
+      const list = res.authors || [];
+      setAuthors(list);
+
+      if (list.length) {
+        if (preload && list.includes(preload)) {
+          setAuthor(preload);
+        } else if (!author) {
+          setAuthor(list[0]);
+        }
+      } else {
+        setAuthor("");
       }
     })();
-    return () => (mounted = false);
+    return () => { mounted = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Persistir selección del autor (para próximas veces)
+  useEffect(() => {
+    if (author) localStorage.setItem("lastEditedAuthor", author);
+  }, [author]);
 
   // Cargar palabras del autor
   useEffect(() => {
@@ -51,7 +78,7 @@ export default function Editor() {
         setRows(emptyRows());
         return setMsg({ type: "error", text: res?.error || "No se pudieron cargar las palabras." });
       }
-      const byLetter = new Map(res.words.map(w => [w.letter, w]));
+      const byLetter = new Map((res.words || []).map(w => [w.letter, w]));
       const next = ALPHABET.map(L => {
         const w = byLetter.get(L);
         return {
@@ -63,7 +90,7 @@ export default function Editor() {
       });
       setRows(next);
     })();
-    return () => (mounted = false);
+    return () => { mounted = false; };
   }, [author]);
 
   const setField = (idx, field, value) => {
@@ -76,7 +103,7 @@ export default function Editor() {
 
   const handleSave = async () => {
     setMsg({ type: "", text: "" });
-    // Validaciones suaves: respuesta y pista deben venir en pares
+    // Validación: pista y respuesta deben venir en pares
     const problems = rows.filter(r => (r.clue && !r.answer) || (!r.clue && r.answer));
     if (problems.length) {
       return setMsg({ type: "error", text: "Completá pista y respuesta en las letras donde cargues datos." });
@@ -101,11 +128,24 @@ export default function Editor() {
     setMsg({ type: "ok", text: "¡Guardado! Tus palabras quedaron actualizadas." });
   };
 
+  const handleDone = () => {
+    if (window.history.length > 1) navigate(-1);
+    else navigate("/");
+  };
+
   return (
     <div className="container" style={{ maxWidth: 960, margin: "0 auto" }}>
-      <h1 style={{ margin: "1rem 0" }}>📝 Editor de Palabras</h1>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+        <h1 style={{ margin: "1rem 0" }}>📝 Editor de Palabras</h1>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="btn outline" onClick={handleDone}>Listo</button>
+          <button className="btn primary" onClick={handleSave} disabled={saving || loading || !author}>
+            {saving ? "Guardando..." : "Guardar cambios"}
+          </button>
+        </div>
+      </div>
 
-      <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 16 }}>
+      <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 16, flexWrap: "wrap" }}>
         <label style={{ fontWeight: 600 }}>Autor:</label>
         <select
           value={author}
@@ -117,7 +157,7 @@ export default function Editor() {
           {authors.map(a => <option key={a} value={a}>{a}</option>)}
         </select>
 
-        <button className="btn" onClick={() => setRows(emptyRows())} disabled={saving || loading}>
+        <button className="btn ghost" onClick={() => setRows(emptyRows())} disabled={saving || loading}>
           Limpiar todo
         </button>
       </div>
@@ -194,7 +234,8 @@ export default function Editor() {
         </div>
       ))}
 
-      <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
+      <div style={{ display: "flex", gap: 12, marginTop: 16, justifyContent: "flex-end" }}>
+        <button className="btn outline" onClick={handleDone}>Listo</button>
         <button className="btn primary" onClick={handleSave} disabled={saving || loading || !author}>
           {saving ? "Guardando..." : "Guardar cambios"}
         </button>

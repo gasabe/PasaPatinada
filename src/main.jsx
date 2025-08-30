@@ -1,4 +1,3 @@
-// src/main.jsx
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
@@ -11,7 +10,8 @@ import Welcome from "./pages/Welcome.jsx";
 import Game from "./pages/Game.jsx";
 import Letters from "./pages/Letters.jsx";
 import Ranking from "./pages/Ranking.jsx";
-import Editor from "../src/pages/Editor.jsx";
+import Editor from "./pages/Editor.jsx";
+import Host from "./pages/Host.jsx"; 
 
 const router = createBrowserRouter([
   {
@@ -23,6 +23,7 @@ const router = createBrowserRouter([
       { path: "letters", element: <Letters /> },
       { path: "ranking", element: <Ranking /> },
       { path: "editor", element: <Editor /> },
+      { path: "host", element: <Host /> }, 
     ],
   },
 ]);

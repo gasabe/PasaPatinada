@@ -1,10 +1,16 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useGameSettings } from "../../lib/useGameSettings";
 import { listCustomAuthors, getCustomWordsByAuthor } from "../../lib/sheets";
 
-export default function GameStartModal({ open, onStart, onOpenCustomBuilder }) {
-  const { mode, setMode, rule, setRule, playerName, setPlayerName, setCustomWords } = useGameSettings();
+export default function GameStartModal({ open, onStart }) {
+  const {
+    mode, setMode,
+    rule, setRule,
+    playerName, setPlayerName,
+    setCustomWords
+  } = useGameSettings();
+
   const [error, setError] = useState("");
   const [authors, setAuthors] = useState([]);
   const [authorSel, setAuthorSel] = useState("");
@@ -13,45 +19,86 @@ export default function GameStartModal({ open, onStart, onOpenCustomBuilder }) {
   const [customReady, setCustomReady] = useState(false);
   const navigate = useNavigate();
 
+  // Cargar autores cuando el modal abre y el modo requiere autor (custom/host)
   useEffect(() => {
     if (!open) return;
-    if (mode === "custom") {
+    if (mode === "custom" || mode === "host") {
+      let mounted = true;
       (async () => {
         setLoadingAuthors(true);
         setError("");
         const res = await listCustomAuthors();
         setLoadingAuthors(false);
-        if (!res?.ok) return setError(res?.error || "No se pudo listar autores.");
-        setAuthors(res.authors || []);
-        if (res.authors?.includes(playerName?.trim())) setAuthorSel(playerName.trim());
+        if (!mounted) return;
+        if (!res?.ok) {
+          setAuthors([]);
+          return setError(res?.error || "No se pudo listar autores.");
+        }
+        const list = res.authors || [];
+        setAuthors(list);
+
+        // Preferir último autor editado (no el player)
+        const last = (typeof window !== "undefined" && localStorage.getItem("lastEditedAuthor")) || "";
+        if (last && list.includes(last)) setAuthorSel(last);
+        else if (list.length && !authorSel) setAuthorSel(list[0]);
       })();
+      return () => { mounted = false; };
     } else {
       setCustomReady(false);
       setAuthorSel("");
+      setCustomWords([]);
     }
-  }, [open, mode, playerName]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, mode]);
 
-  const handleLoadRosco = async () => {
-    if (!authorSel) return setError("Elegí un autor del listado.");
-    setLoadingRosco(true);
-    setError("");
-    const res = await getCustomWordsByAuthor(authorSel);
-    setLoadingRosco(false);
-    if (!res?.ok) {
+  // Carga automática del rosco cuando cambia el autor seleccionado
+  useEffect(() => {
+    if (!open || !(mode === "custom" || mode === "host")) return;
+    if (!authorSel) {
       setCustomReady(false);
       setCustomWords([]);
-      return setError(res?.error || "No se pudieron cargar las palabras.");
+      return;
     }
-    setCustomWords(res.words || []);
-    setCustomReady(true);
-  };
+    let mounted = true;
+    (async () => {
+      setLoadingRosco(true);
+      setError("");
+      const res = await getCustomWordsByAuthor(authorSel);
+      setLoadingRosco(false);
+      if (!mounted) return;
+      if (!res?.ok) {
+        setCustomReady(false);
+        setCustomWords([]);
+        return setError(res?.error || "No se pudieron cargar las palabras del autor.");
+      }
+      setCustomWords(res.words || []);
+      setCustomReady(true);
+    })();
+    return () => { mounted = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authorSel]);
 
   const handleStart = () => {
     if (!playerName.trim()) return setError("Poné tu nombre para registrar estadísticas.");
     if (!mode) return setError("Elegí un modo de juego.");
-    if (mode === "random" && !rule) setRule("starts_with");
-    if (mode === "custom" && !customReady) return setError("Cargá el rosco del autor antes de empezar.");
+
+    if (mode === "random") {
+      if (!rule) setRule("starts_with");
+      setError("");
+      onStart?.({ author: null });
+      return;
+    }
+
+    // custom y host requieren set cargado
+    if (!customReady) return setError("Esperá a que se cargue el rosco del autor.");
     setError("");
+
+    if (mode === "host") {
+      navigate("/host", { replace: true });
+      return;
+    }
+
+    // custom normal
     onStart?.({ author: authorSel || null });
   };
 
@@ -62,7 +109,7 @@ export default function GameStartModal({ open, onStart, onOpenCustomBuilder }) {
   const startDisabled =
     !playerName.trim() ||
     !mode ||
-    (mode === "custom" && !customReady);
+    ((mode === "custom" || mode === "host") && (!authorSel || !customReady || loadingRosco));
 
   return (
     <div className="modal-backdrop" onClick={handleCancel}>
@@ -83,12 +130,31 @@ export default function GameStartModal({ open, onStart, onOpenCustomBuilder }) {
         <fieldset className="field">
           <legend>Modo de juego</legend>
           <label className="radio">
-            <input type="radio" name="mode" checked={mode === "random"} onChange={() => setMode("random")} />
+            <input
+              type="radio"
+              name="mode"
+              checked={mode === "random"}
+              onChange={() => setMode("random")}
+            />
             <span>Random (preguntas aleatorias)</span>
           </label>
           <label className="radio">
-            <input type="radio" name="mode" checked={mode === "custom"} onChange={() => setMode("custom")} />
+            <input
+              type="radio"
+              name="mode"
+              checked={mode === "custom"}
+              onChange={() => setMode("custom")}
+            />
             <span>Personalizado (tu propio rosco / de otro jugador)</span>
+          </label>
+          <label className="radio">
+            <input
+              type="radio"
+              name="mode"
+              checked={mode === "host"}
+              onChange={() => setMode("host")}
+            />
+            <span>Relator (vos presentás y marcás: correcto / pasapatinada / incorrecto)</span>
           </label>
         </fieldset>
 
@@ -96,54 +162,63 @@ export default function GameStartModal({ open, onStart, onOpenCustomBuilder }) {
           <fieldset className="field">
             <legend>Regla para random</legend>
             <label className="radio">
-              <input type="radio" name="rule" checked={rule === "starts_with"} onChange={() => setRule("starts_with")} />
+              <input
+                type="radio"
+                name="rule"
+                checked={rule === "starts_with"}
+                onChange={() => setRule("starts_with")}
+              />
               <span>Empieza con la letra</span>
             </label>
           </fieldset>
         )}
 
-        {mode === "custom" && (
-          <>
-            <div className="field">
-              <label>
-                <span>Creador del rosco</span>
-                <div style={{ display: "flex", gap: ".5rem" }}>
-                  <select
-                    value={authorSel}
-                    onChange={(e) => { setAuthorSel(e.target.value); setCustomReady(false); }}
-                    disabled={loadingAuthors}
-                  >
-                    <option value="">{loadingAuthors ? "Cargando autores..." : "Elegí un autor"}</option>
-                    {authors.map((a) => (
-                      <option key={a} value={a}>{a}</option>
-                    ))}
-                  </select>
-                  <button
-                    className="btn"
-                    type="button"
-                    onClick={handleLoadRosco}
-                    disabled={!authorSel || loadingRosco}
-                    title={!authorSel ? "Elegí un autor" : "Descargar palabras del autor"}
-                  >
-                    {loadingRosco ? "Cargando..." : (customReady ? "Recargar" : "Cargar rosco")}
-                  </button>
-                </div>
-                {customReady && <small className="text-ok">✔ Rosco cargado de “{authorSel}”.</small>}
-              </label>
-            </div>
+        {(mode === "custom" || mode === "host") && (
+          <div className="field">
+            <label>
+              <span>Creador del rosco</span>
+              <div style={{ display: "flex", gap: ".5rem" }}>
+                <select
+                  value={authorSel}
+                  onChange={(e) => setAuthorSel(e.target.value)}
+                  disabled={loadingAuthors}
+                >
+                  {!authors.length && (
+                    <option value="">
+                      {loadingAuthors ? "Cargando autores..." : "No hay autores"}
+                    </option>
+                  )}
+                  {!!authors.length && <option value="">Elegí un autor</option>}
+                  {authors.map((a) => (
+                    <option key={a} value={a}>{a}</option>
+                  ))}
+                </select>
 
-            <div className="field">
-              <button className="btn" type="button" onClick={onOpenCustomBuilder}>
-                Crear / editar mis palabras del rosco
-              </button>
-            </div>
-          </>
+                {/* Pasar SIEMPRE el autor seleccionado al editor */}
+                <Link
+                  to={{
+                    pathname: "/editor",
+                    search: authorSel ? `?author=${encodeURIComponent(authorSel)}` : "",
+                  }}
+                  state={{ author: authorSel || "" }}
+                  className="btn outline"
+                  title="Crear / editar palabras del autor seleccionado"
+                >
+                  Editar mis palabras
+                </Link>
+              </div>
+              {loadingRosco && <small>Descargando rosco...</small>}
+              {customReady && authorSel && !loadingRosco && (
+                <small className="text-ok">✔ Rosco de “{authorSel}” listo.</small>
+              )}
+            </label>
+          </div>
         )}
 
         {error && <p className="error">{error}</p>}
 
         <div className="actions">
-          <button className="btn" type="button" onClick={handleCancel}>Cancelar</button>
+          <button className="btn ghost" type="button" onClick={handleCancel}>Cancelar</button>
           <button
             className="btn primary"
             type="button"
@@ -151,7 +226,7 @@ export default function GameStartModal({ open, onStart, onOpenCustomBuilder }) {
             disabled={startDisabled}
             title={startDisabled ? "Completá los pasos anteriores" : "¡Listo para jugar!"}
           >
-            Empezar juego
+            {mode === "host" ? "Ir al modo Relator" : "Empezar juego"}
           </button>
         </div>
       </div>
